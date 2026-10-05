@@ -68,3 +68,8 @@ The application uses OpenFoodFacts to retrieve product information by barcode.
 Run:
 
 pytest
+## Testing
+
+Run the test suite with:
+
+python -m pytest
