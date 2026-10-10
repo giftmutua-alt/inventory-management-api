@@ -159,9 +159,19 @@ def delete_item(item_id):
 
 
 # GET /products/<barcode>
-# Fetch product information from OpenFoodFacts
+# Fetch product information from OpenFoodFacts and add it to inventory
 @app.route("/products/<barcode>", methods=["GET"])
 def get_product_from_api(barcode):
+    # Avoid adding the same barcode twice
+    for item in inventory:
+        if item.get("barcode") == barcode:
+            return jsonify({
+                "barcode": barcode,
+                "product_name": item["name"],
+                "brands": item["brand"],
+                "ingredients_text": item["ingredients"],
+                "message": "Product already exists in inventory"
+            }), 200
 
     url = f"https://world.openfoodfacts.org/api/v2/product/{barcode}"
 
@@ -169,9 +179,7 @@ def get_product_from_api(barcode):
         response = requests.get(
             url,
             timeout=10,
-            headers={
-                "User-Agent": "InventoryManagementLab/1.0"
-            }
+            headers={"User-Agent": "InventoryManagementLab/1.0"}
         )
 
         if response.status_code != 200:
@@ -182,25 +190,42 @@ def get_product_from_api(barcode):
         data = response.json()
 
         if data.get("status") != 1:
-            return jsonify({
-                "error": "Product not found"
-            }), 404
+            return jsonify({"error": "Product not found"}), 404
 
         product = data.get("product", {})
+        name = product.get("product_name", "").strip()
 
-        result = {
+        if not name:
+            return jsonify({
+                "error": "Product has no name in OpenFoodFacts"
+            }), 422
+
+        new_item = {
+            "id": max(
+                (item["id"] for item in inventory),
+                default=0
+            ) + 1,
+            "name": name,
+            "brand": product.get("brands", ""),
+            "price": 0,
+            "stock": 0,
             "barcode": barcode,
-            "product_name": product.get("product_name", ""),
-            "brands": product.get("brands", ""),
-            "ingredients_text": product.get(
-                "ingredients_text",
-                ""
-            )
+            "ingredients": product.get("ingredients_text", "")
         }
 
-        return jsonify(result), 200
+        inventory.append(new_item)
 
-    except requests.RequestException:
+        # Keep the existing response format for compatibility
+        return jsonify({
+            "barcode": barcode,
+            "product_name": name,
+            "brands": new_item["brand"],
+            "ingredients_text": new_item["ingredients"],
+            "message": "Product added to inventory",
+            "item": new_item
+        }), 200
+
+    except (requests.RequestException, ValueError):
         return jsonify({
             "error": "OpenFoodFacts API request failed"
         }), 502
